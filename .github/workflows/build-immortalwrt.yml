@@ -62,16 +62,15 @@ define Device/zbtlink_z8102ax-emmc
   DEVICE_DTS := mt7981b-zbtlink-zbt-z8102ax-v2-emmc
   DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
   SUPPORTED_DEVICES := zbtlink,z8102ax-emmc
-  UBINIZE_OPTS := -E 5
-  BLOCKSIZE := 128k
+  # eMMC specific settings (not NAND/UBI)
+  KERNEL_SIZE := 32768k
+  ROOTFS_SIZE := 7340032k
+  BLOCKSIZE := 64k
   PAGESIZE := 2048
-  IMAGE_SIZE := 7680k
-  KERNEL_IN_UBI := 1
-  IMAGES += factory.bin sysupgrade.bin
-  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
+  IMAGES := sysupgrade.bin
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
   DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware kmod-usb3 \
-    kmod-mt753x swconfig luci-app-mtwifi -wpad-openssl
+    kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
 endef
 TARGET_DEVICES += zbtlink_z8102ax-emmc
 EOF

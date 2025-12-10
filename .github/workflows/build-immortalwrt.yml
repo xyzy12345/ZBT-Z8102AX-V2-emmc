@@ -1,280 +1,100 @@
-name: Build ImmortalWrt for ZBT-Z8102AX-eMMC
+name: ImmortalWrt 24.10.4 for ZBT Z8102AX-eMMC
 
 on:
   push:
-    branches: [ main, master ]
     paths:
-      - '.github/workflows/build-immortalwrt.yml'
       - 'config/**'
       - 'dts/**'
-      - 'patches/**'
-  pull_request:
-    branches: [ main, master ]
-  schedule:
-    # 每周日早上6点自动编译
-    - cron: '0 6 * * 0'
-  workflow_dispatch:  # 手动触发
+      - 'files/**'
+      - '.github/workflows/build-immortalwrt.yml'
+  workflow_dispatch:
     inputs:
-      version:
-        description: 'ImmortalWrt 版本'
-        required: true
-        default: '24.10.4'
-        type: choice
-        options:
-          - '24.10.4'
-          - 'master'
-
-env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: ${{ github.event.inputs.version || '24.10.4' }}
-  FEEDS_CONF: feeds.conf.default
-  TARGET: mediatek
-  SUBTARGET: mt7981
-  PROFILE: zbtlink_z8102ax-emmc
-  BUILD_THREADS: 4
+      clean_build:
+        description: '清理构建'
+        required: false
+        default: 'false'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180  # 3小时超时
-
+    runs-on: ubuntu-24.04
+    
     steps:
-    - name: Checkout ImmortalWrt Source
+    - name: 检出ImmortalWrt源码
       uses: actions/checkout@v4
       with:
-        submodules: true
-        path: immortalwrt
-
-    - name: Checkout Custom Files
+        repository: immortalwrt/immortalwrt
+        ref: v24.10.4
+        path: openwrt
+    
+    - name: 检出配置文件
       uses: actions/checkout@v4
       with:
-        path: custom
-
-    # 设置自定义 DTS 和配置
-    - name: Setup Custom Configuration
-      run: |
-        echo "=== 复制自定义文件到 ImmortalWrt 源码 ==="
-        
-        # 复制 DTS 文件
-        if [ -f "custom/dts/mt7981-emmc-rfb-z8102ax.dts" ]; then
-          cp custom/dts/mt7981-emmc-rfb-z8102ax.dts immortalwrt/target/linux/mediatek/dts/
-          echo "✓ DTS 文件已复制"
-        else
-          echo "⚠ 未找到自定义 DTS 文件，使用默认配置"
-        fi
-
-        # 复制配置文件
-        if [ -f "custom/config/z8102ax.config" ]; then
-          cp custom/config/z8102ax.config immortalwrt/
-          echo "✓ 配置文件已复制"
-        fi
-
-        # 复制 patches
-        if [ -d "custom/patches" ]; then
-          cp -r custom/patches/* immortalwrt/patches/ 2>/dev/null || true
-          echo "✓ Patches 已复制"
-        fi
-
-    # 设置构建环境
-    - name: Setup Build Environment
+        path: config-repo
+    
+    - name: 安装依赖
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses5-dev libssl-dev python3 python3-pip python3-setuptools \
-          python3-dev rsync unzip zlib1g-dev file wget curl cmake libelf-dev \
-          upx dos2unix libtool-bin time bc locales
-
-        # 设置 locale
-        sudo locale-gen en_US.UTF-8
-
-    - name: Clone ImmortalWrt Repository
-      if: steps.cache.outputs.cache-hit != 'true'
+        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib \
+          gettext git libncurses5-dev libssl-dev python3 python3-distutils rsync unzip zlib1g-dev
+    
+    - name: 准备设备树文件
+      working-directory: ./openwrt
       run: |
-        if [ ! -d "immortalwrt/.git" ]; then
-          rm -rf immortalwrt
-          git clone --depth=1 --branch=${{ env.REPO_BRANCH }} ${{ env.REPO_URL }} immortalwrt
-        else
-          cd immortalwrt
-          git fetch origin ${{ env.REPO_BRANCH }}
-          git checkout ${{ env.REPO_BRANCH }}
-          git pull origin ${{ env.REPO_BRANCH }}
+        # 复制DTS文件
+        mkdir -p target/linux/mediatek/dts/
+        cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
+        
+        # 在filogic.mk中添加设备定义
+        DEVICE_DEF="\define Device/zbt_z8102ax-emmc\n  DEVICE_VENDOR := ZBT\n  DEVICE_MODEL := Z8102AX-eMMC\n  DEVICE_DTS := mt7981-zbt-z8102ax-emmc\n  DEVICE_DTS_DIR := \$(DTS_DIR)/mediatek\n  SUPPORTED_DEVICES := zbt,z8102ax-emmc\n  UBINIZE_OPTS := -E 5\n  BLOCKSIZE := 128k\n  PAGESIZE := 2048\n  IMAGE_SIZE := 32768k\n  KERNEL_IN_UBI := 1\n  IMAGES := sysupgrade.tar\n  IMAGE/sysupgrade.tar := sysupgrade-tar | append-metadata\nendef\n\nTARGET_DEVICES += zbt_z8102ax-emmc"
+        
+        if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
+          echo -e "$DEVICE_DEF" >> target/linux/mediatek/image/filogic.mk
         fi
-
-    - name: Update and Install Feeds
+    
+    - name: 准备配置
+      working-directory: ./openwrt
       run: |
-        cd immortalwrt
+        # 更新feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-
-    # 添加自定义设备到 Makefile
-    - name: Add Custom Device Definition
-      run: |
-        cd immortalwrt
         
-        # 备份原文件
-        cp target/linux/mediatek/image/mt7981.mk target/linux/mediatek/image/mt7981.mk.bak
+        # 复制配置文件
+        cp ../config-repo/config/zbt-z8102ax-emmc.config .config
         
-        # 添加 Z8102AX 设备定义
-        cat >> target/linux/mediatek/image/mt7981.mk << 'EOF'
-
-# ZBT Z8102AX (eMMC) 设备定义
-define Device/zbtlink_z8102ax-emmc
-  DEVICE_VENDOR := ZBT
-  DEVICE_MODEL := Z8102AX (eMMC)
-  DEVICE_DTS := mt7981-emmc-rfb-z8102ax
-  DEVICE_DTS_DIR := \$$(DTS_DIR)/mediatek
-  SUPPORTED_DEVICES := zbtlink,z8102ax-emmc mediatek,mt7981-emmc-rfb
-  
-  # eMMC 设备参数
-  IMAGES := sysupgrade.bin
-  IMAGE_SIZE := 116736k
-  
-  # 内核和根文件系统生成方式
-  KERNEL := kernel-bin | gzip | fit gzip \$$(KDIR)/image-\$$(firstword \$$(DEVICE_DTS)).dtb
-  IMAGE/sysupgrade.bin := append-kernel | pad-to 64M | \\
-        append-rootfs | pad-rootfs | check-size | append-metadata
-  
-  # 引导相关文件
-  ARTIFACTS := emmc-preloader.bin emmc-bl31-uboot.fip
-  ARTIFACT/emmc-preloader.bin := mt7981-bl2 emmc
-  ARTIFACT/emmc-bl31-uboot.fip := mt7981-bl31-uboot zbtlink_z8102ax-emmc
-  
-  DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware \\
-        kmod-mmc kmod-fs-ext4 kmod-fs-f2fs kmod-fs-vfat
-endef
-TARGET_DEVICES += zbtlink_z8102ax-emmc
-EOF
+        # 应用配置升级
+        yes "" | make kernel_oldconfig 2>/dev/null || true
         
-        echo "✓ 已添加 Z8102AX 设备定义"
-
-    # 配置编译选项
-    - name: Configure Build
-      run: |
-        cd immortalwrt
+        # 确保关键配置设置正确
+        echo "CONFIG_TARGET_KERNEL_PARTSIZE=32" >> .config
+        echo "CONFIG_TARGET_ROOTFS_PARTSIZE=7168" >> .config
+        echo "CONFIG_KERNEL_XZ=y" >> .config
+        echo "# CONFIG_DEBUG_INFO is not set" >> .config
         
-        # 复制默认配置
-        if [ -f "../custom/config/z8102ax.config" ]; then
-          cp ../custom/config/z8102ax.config .config
-          echo "✓ 使用自定义配置文件"
-        else
-          # 生成默认配置
-          cat > .config << 'EOF'
-CONFIG_TARGET_mediatek=y
-CONFIG_TARGET_MEDIATEK_FILTER=y
-CONFIG_TARGET_mediatek_mt7981=y
-CONFIG_TARGET_mediatek_mt7981_DEVICE_zbtlink_z8102ax-emmc=y
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
-CONFIG_TARGET_ROOTFS_PARTSIZE=2048
-CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-theme-bootstrap=y
-CONFIG_PACKAGE_luci-app-firewall=y
-CONFIG_PACKAGE_luci-app-opkg=y
-CONFIG_PACKAGE_luci-app-upnp=y
-CONFIG_PACKAGE_luci-app-wireguard=y
-CONFIG_PACKAGE_luci-app-ddns=y
-CONFIG_PACKAGE_luci-app-sqm=y
-CONFIG_PACKAGE_luci-app-statistics=y
-# 基础包
-CONFIG_PACKAGE_iperf3=y
-CONFIG_PACKAGE_tcpdump=y
-CONFIG_PACKAGE_htop=y
-CONFIG_PACKAGE_nano=y
-CONFIG_PACKAGE_curl=y
-CONFIG_PACKAGE_wget=y
-# 网络
-CONFIG_PACKAGE_ip-full=y
-CONFIG_PACKAGE_iptables-mod-extra=y
-CONFIG_PACKAGE_iptables-mod-ipopt=y
-CONFIG_PACKAGE_iptables-mod-conntrack-extra=y
-CONFIG_PACKAGE_ip6tables-mod-extra=y
-# USB 支持
-CONFIG_PACKAGE_kmod-usb-storage=y
-CONFIG_PACKAGE_kmod-usb-storage-extras=y
-CONFIG_PACKAGE_kmod-usb-serial=y
-CONFIG_PACKAGE_kmod-usb-serial-option=y
-CONFIG_PACKAGE_kmod-usb-net=y
-CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
-CONFIG_PACKAGE_kmod-usb-net-sierrawireless=y
-# 文件系统
-CONFIG_PACKAGE_kmod-fs-ext4=y
-CONFIG_PACKAGE_kmod-fs-f2fs=y
-CONFIG_PACKAGE_kmod-fs-vfat=y
-CONFIG_PACKAGE_kmod-fs-exfat=y
-# WiFi
-CONFIG_PACKAGE_kmod-mt7981-firmware=y
-CONFIG_PACKAGE_mt7981-wo-firmware=y
-# 其他内核模块
-CONFIG_PACKAGE_kmod-ipt-offload=y
-CONFIG_PACKAGE_kmod-usb-ledtrig-usbport=y
-CONFIG_PACKAGE_kmod-crypto-crc32c=y
-CONFIG_PACKAGE_kmod-crypto-hmac=y
-EOF
-          echo "✓ 使用默认配置文件"
-        fi
-        
-        # 运行 menuconfig（非交互式）
+        # 最终确认配置
         make defconfig
-        echo "✓ 配置完成"
-
-    # 开始编译
-    - name: Build Firmware
+    
+    - name: 复制自定义文件
+      working-directory: ./openwrt
       run: |
-        cd immortalwrt
-        make -j${{ env.BUILD_THREADS }} V=s 2>&1 | tee build.log
-        
-        # 检查编译结果
-        if [ -f "bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/immortalwrt-${{ env.TARGET }}-${{ env.SUBTARGET }}-${{ env.PROFILE }}-squashfs-sysupgrade.bin" ]; then
-          echo "✓ 编译成功！"
-          ls -lh bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
-        else
-          echo "✗ 编译失败！"
-          tail -100 build.log
-          exit 1
+        if [ -d "../config-repo/files" ]; then
+          cp -r ../config-repo/files/* files/
         fi
-
-    # 上传编译产物
-    - name: Upload Artifacts
+    
+    - name: 下载源码
+      working-directory: ./openwrt
+      run: |
+        make download -j$(nproc) V=s
+    
+    - name: 编译固件
+      working-directory: ./openwrt
+      run: |
+        make -j$(nproc) V=s 2>&1 | tee build.log
+    
+    - name: 上传固件
       uses: actions/upload-artifact@v4
       with:
         name: immortalwrt-z8102ax-firmware
         path: |
-          immortalwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
-          immortalwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/packages/
+          openwrt/bin/targets/mediatek/filogic/*zbt_z8102ax-emmc*
+          openwrt/.config
         retention-days: 30
-
-    # 生成发布版本
-    - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
-      with:
-        name: ImmortalWrt ${{ env.REPO_BRANCH }} for ZBT-Z8102AX
-        tag_name: immortalwrt-${{ env.REPO_BRANCH }}-z8102ax-$(date +%Y%m%d)
-        body: |
-          # ImmortalWrt ${{ env.REPO_BRANCH }} for ZBT-Z8102AX (eMMC)
-          
-          ## 设备信息
-          - **型号**: ZBT-Z8102AX (eMMC版本)
-          - **平台**: MediaTek MT7981 (Filogic 820)
-          - **存储**: 128GB eMMC
-          - **内存**: 1GB DDR4
-          - **网络**: 2.5G WAN + 4x Gigabit LAN
-          
-          ## 固件特性
-          - 基于 ImmortalWrt ${{ env.REPO_BRANCH }}
-          - 包含 LuCI Web 界面
-          - 支持 USB 4G 模块
-          - 完整的网络功能
-          - 64MB 内核分区优化
-          
-          ## 刷机说明
-          1. 通过 Web 界面刷入 sysupgrade.bin
-          2. 或通过 U-Boot 刷写
-          
-          ## 编译信息
-          - **编译时间**: $(date)
-          - **分支**: ${{ env.REPO_BRANCH }}
-          - **提交**: ${{ github.sha }}
-        files: |
-          immortalwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
-        draft: false
-        prerelease: false

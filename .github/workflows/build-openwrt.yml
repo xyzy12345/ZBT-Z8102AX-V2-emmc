@@ -9,90 +9,225 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-
+    
     steps:
-      - name: 检出OpenWrt源码
-        uses: actions/checkout@v4
-        with:
-          repository: openwrt/openwrt
-          ref: v24.10.4
-          path: openwrt
+    - name: 检出OpenWrt源码
+      uses: actions/checkout@v4
+      with:
+        repository: openwrt/openwrt
+        ref: v24.10.4
+        path: openwrt
+    
+    - name: 检出配置文件
+      uses: actions/checkout@v4
+      with:
+        path: config-repo
+    
+    - name: 安装编译依赖
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq
+        sudo apt-get install -yq \
+          build-essential \
+          ccache \
+          ecj \
+          fastjar \
+          file \
+          g++ \
+          gawk \
+          gettext \
+          git \
+          libelf-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libssl-dev \
+          python3 \
+          python3-dev \
+          python3-setuptools \
+          rsync \
+          unzip \
+          zlib1g-dev \
+          gcc-multilib \
+          flex \
+          bison \
+          gperf \
+          patch \
+          texinfo \
+          wget \
+          curl \
+          lzop \
+          upx-ucl \
+          liblzma-dev \
+          liblz4-tool \
+          zstd \
+          jq \
+          subversion \
+          swig \
+          time \
+          xsltproc
+    
+    - name: 准备设备支持
+      working-directory: ./openwrt
+      run: |
+        # 复制DTS
+        mkdir -p target/linux/mediatek/dts/
+        cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
+        
+        # 添加到filogic.mk
+        if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "define Device/zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_VENDOR := ZBT" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_MODEL := Z8102AX-eMMC" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  SUPPORTED_DEVICES := zbt,z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> target/linux/mediatek/image/filogic.mk
+          echo "endef" >> target/linux/mediatek/image/filogic.mk
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "TARGET_DEVICES += zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+        fi
+    
+    - name: 更新Feeds
+      working-directory: ./openwrt
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+    
+    - name: 安全配置升级
+      working-directory: ./openwrt
+      run: |
+        echo "=== 安全配置升级 ==="
+        
+        # 检查原厂配置文件
+        if [ ! -f "../config-repo/config/original.config" ]; then
+          echo "❌ 错误：未找到原厂配置文件"
+          echo "请将原厂21.02的.config文件放入config/目录，命名为original.config"
+          exit 1
+        fi
+        
+        # 方法1：创建新的配置框架
+        echo "创建新的配置框架..."
+        make defconfig
+        
+        # 备份当前配置
+        cp .config .config.new
+        
+        # 复制原厂配置
+        cp ../config-repo/config/original.config .config.original
+        
+        # 方法2：使用合并方法
+        echo "合并原厂配置..."
+        
+        # 提取原厂配置的关键设置
+        grep -E "CONFIG_TARGET|CONFIG_KERNEL|CONFIG_PACKAGE" .config.original > .config.important || true
+        
+        # 创建新的配置
+        echo "创建新配置..."
+        cat > .config << 'EOF'
+# 基础目标平台
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
 
-      - name: 检出配置文件
-        uses: actions/checkout@v4
-        with:
-          path: config-repo
+# 内核配置
+CONFIG_TARGET_KERNEL_PARTSIZE=32
+CONFIG_TARGET_ROOTFS_PARTSIZE=7168
+CONFIG_KERNEL_XZ=y
+# CONFIG_DEBUG_INFO is not set
 
-      - name: 安装依赖
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential ccache ecj fastjar file \
-            g++ gawk gettext git libncurses5-dev libssl-dev python3 \
-            python3-distutils python3-dev rsync zlib1g-dev flex bison
+# 硬件支持
+CONFIG_MMC=y
+CONFIG_MMC_MTK=y
+CONFIG_MMC_SDHCI_MTK=y
+CONFIG_BLK_DEV_SD=y
 
-      - name: 准备设备支持
-        working-directory: ./openwrt
-        run: |
-          # 复制DTS
-          mkdir -p target/linux/mediatek/dts/
-          cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts \
-            target/linux/mediatek/dts/
+# 文件系统
+CONFIG_FS_EXT4=y
+CONFIG_FS_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
 
-          # 添加到filogic.mk
-          if ! grep -q "zbt_z8102ax-emmc" \
-            target/linux/mediatek/image/filogic.mk; then
-            echo "" >> target/linux/mediatek/image/filogic.mk
-            echo "define Device/zbt_z8102ax-emmc" >> \
-              target/linux/mediatek/image/filogic.mk
-            echo "  DEVICE_VENDOR := ZBT" >> \
-              target/linux/mediatek/image/filogic.mk
-            echo "  DEVICE_MODEL := Z8102AX-eMMC" >> \
-              target/linux/mediatek/image/filogic.mk
-            echo "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc" >> \
-              target/linux/mediatek/image/filogic.mk
-            echo "  SUPPORTED_DEVICES := zbt,z8102ax-emmc" >> \
-              target/linux/mediatek/image/filogic.mk
-            echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | \
-              append-metadata" >> target/linux/mediatek/image/filogic.mk
-            echo "endef" >> target/linux/mediatek/image/filogic.mk
-            echo "" >> target/linux/mediatek/image/filogic.mk
-            echo "TARGET_DEVICES += zbt_z8102ax-emmc" >> \
-              target/linux/mediatek/image/filogic.mk
+# 网络驱动
+CONFIG_PACKAGE_kmod-mt7981-firmware=y
+CONFIG_PACKAGE_mt7981-wo-firmware=y
+CONFIG_PACKAGE_kmod-mt753x=y
+
+# 基础软件包
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+
+# 从原厂配置继承的重要设置
+EOF
+        
+        # 添加原厂重要配置
+        cat .config.important >> .config 2>/dev/null || true
+        
+        # 清理临时文件
+        rm -f .config.important .config.new .config.original
+        
+        # 运行defconfig来规范化配置
+        echo "规范化配置..."
+        make defconfig
+        
+        # 验证关键配置
+        echo "验证关键配置..."
+        for config in "CONFIG_TARGET_KERNEL_PARTSIZE" "CONFIG_MMC_MTK" "CONFIG_PACKAGE_kmod-mt7981-firmware"; do
+          if grep -q "^${config}=" .config; then
+            echo "✅ $config 已设置"
+          else
+            echo "⚠️  $config 未设置，正在添加..."
+            echo "$config=y" >> .config
           fi
-
-      - name: 使用原厂配置
-        working-directory: ./openwrt
-        run: |
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-          cp ../config-repo/config/original.config .config
-
-          # 升级配置
-          yes "" | make kernel_oldconfig 2>/dev/null || true
-
-          # 必要配置
-          cat >> .config << 'EOF'
-          CONFIG_TARGET_KERNEL_PARTSIZE=32
-          CONFIG_TARGET_ROOTFS_PARTSIZE=7168
-          CONFIG_KERNEL_XZ=y
-          CONFIG_MMC=y
-          CONFIG_MMC_MTK=y
-          CONFIG_PACKAGE_kmod-mt7981-firmware=y
-          CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
-          EOF
-
-          make defconfig
-
-      - name: 编译
-        working-directory: ./openwrt
-        run: |
-          make download -j$(nproc)
-          make -j$(nproc) V=s 2>&1 | tee build.log
-
-      - name: 上传固件
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-z8102ax
-          path: openwrt/bin/targets/mediatek/filogic/
-          retention-days: 30
+        done
+        
+        # 再次运行defconfig
+        make defconfig
+        
+        echo "✅ 配置完成"
+    
+    - name: 复制自定义文件
+      working-directory: ./openwrt
+      run: |
+        if [ -d "../config-repo/files" ]; then
+          cp -r ../config-repo/files/* files/
+          echo "✅ 自定义文件已复制"
+        fi
+    
+    - name: 下载软件包
+      working-directory: ./openwrt
+      run: |
+        echo "下载软件包..."
+        make download -j$(nproc) V=s 2>&1 | tee download.log
+        
+        # 清理损坏的下载
+        find dl -size -1024c -delete 2>/dev/null || true
+    
+    - name: 编译固件
+      working-directory: ./openwrt
+      timeout-minutes: 120
+      run: |
+        echo "开始编译..."
+        
+        # 编译工具链
+        echo "编译工具链..."
+        make toolchain/compile -j$(nproc) V=s
+        
+        # 编译固件
+        echo "编译固件..."
+        make -j$(($(nproc)+1)) V=s 2>&1 | tee build.log
+        
+        # 如果失败，尝试单线程
+        if [ $? -ne 0 ]; then
+          echo "并行编译失败，尝试单线程..."
+          make -j1 V=s 2>&1 | tee build-single.log
+        fi
+    
+    - name: 上传固件
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-z8102ax
+        path: |
+          openwrt/bin/targets/mediatek/filogic/*
+          openwrt/.config
+          openwrt/build.log
+        retention-days: 30

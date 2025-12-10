@@ -126,7 +126,9 @@ The `dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts` file defines hardware configur
   - u-boot-env: 512KB (U-Boot environment variables)
   - factory: 2MB (Factory data, including WiFi calibration data)
   - fip: 2MB (Firmware Image Package)
-  - ubi: ~122MB (Root filesystem and user data)
+  - kernel: 32MB (Kernel partition)
+  - rootfs: 7GB (Root filesystem, SquashFS format)
+  - overlay: ~105GB (Optional, user data partition on p7)
 
 ## Flashing Guide
 

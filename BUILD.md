@@ -126,7 +126,9 @@ CONFIG_PACKAGE_your-package-name=y
   - u-boot-env: 512KB (U-Boot 环境变量)
   - factory: 2MB (出厂数据，包含 WiFi 校准数据)
   - fip: 2MB (固件镜像包)
-  - ubi: ~122MB (根文件系统和用户数据)
+  - kernel: 32MB (内核分区)
+  - rootfs: 7GB (根文件系统，SquashFS 格式)
+  - overlay: 约105GB (可选，用户数据分区，在 p7 上)
 
 ## 刷机指南
 

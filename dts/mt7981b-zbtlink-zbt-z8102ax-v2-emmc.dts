@@ -239,9 +239,14 @@
 		};
 
 		partition@580000 {
-			label = "ubi";
-			/* Rest of eMMC space: 0x7a80000 bytes (122.5MB) for rootfs and overlay */
-			reg = <0x580000 0x7a80000>;
+			label = "kernel";
+			reg = <0x580000 0x2000000>; // 32MB
+		};
+
+		partition@2580000 {
+			label = "rootfs";
+			/* 7GB rootfs partition for squashfs image */
+			reg = <0x2580000 0x1c0000000>;
 		};
 	};
 };

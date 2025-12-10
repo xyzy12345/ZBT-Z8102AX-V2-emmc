@@ -1,0 +1,27 @@
+# Build directories
+openwrt-build/
+immortalwrt-build/
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# Compiled firmware
+*.bin
+*.img
+*.gz
+*.xz
+
+# Logs
+*.log
+
+# Backup files
+*.bak
+*.backup

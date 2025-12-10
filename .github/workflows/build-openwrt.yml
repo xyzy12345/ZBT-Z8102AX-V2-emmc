@@ -160,7 +160,7 @@ jobs:
         CONFIGEOF
         
         # 删除配置文件中的前导空格
-        sed -i 's/^        //' .config
+        sed -i 's/^[[:space:]]*//' .config
         
         # 添加原厂重要配置
         cat .config.important >> .config 2>/dev/null || true

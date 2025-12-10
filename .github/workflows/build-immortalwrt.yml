@@ -125,7 +125,7 @@ jobs:
         
         # 使用非交互式方式接受所有默认值
         echo "执行非交互式配置升级..."
-        yes y | head -50 | make oldconfig
+        yes y | make oldconfig || true
         
         # 如果上述方法失败，使用备用方案
         if [ $? -ne 0 ]; then
@@ -177,7 +177,7 @@ jobs:
         CONFIGEOF
         
         # 删除配置文件中的前导空格
-        sed -i 's/^        //' .config
+        sed -i 's/^[[:space:]]*//' .config
         
         # 最终确认配置
         echo "最终配置检查..."

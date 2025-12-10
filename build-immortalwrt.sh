@@ -83,12 +83,12 @@ if [ -d "../patches/immortalwrt" ]; then
     echo -e "${GREEN}Applying device-specific patches...${NC}"
     for patch in ../patches/immortalwrt/*.patch; do
         if [ -f "$patch" ]; then
-            echo "Applying: $(basename $patch)"
+            echo "Applying: $(basename "$patch")"
             if ! patch -p1 --dry-run < "$patch" > /dev/null 2>&1; then
-                echo -e "${YELLOW}Warning: Patch $(basename $patch) may already be applied or conflicts exist${NC}"
+                echo -e "${YELLOW}Warning: Patch $(basename "$patch") may already be applied or conflicts exist${NC}"
             else
                 patch -p1 < "$patch" || {
-                    echo -e "${RED}Error: Failed to apply patch $(basename $patch)${NC}"
+                    echo -e "${RED}Error: Failed to apply patch $(basename "$patch")${NC}"
                     exit 1
                 }
             fi

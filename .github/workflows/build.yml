@@ -1,0 +1,49 @@
+---
+name: Validate Build Scripts
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-scripts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check shell scripts syntax
+        run: |
+          bash -n build-openwrt.sh
+          bash -n build-immortalwrt.sh
+          echo "✓ All build scripts have valid syntax"
+
+      - name: Verify directory structure
+        run: |
+          test -d configs || exit 1
+          test -d dts || exit 1
+          test -d patches/openwrt || exit 1
+          test -d patches/immortalwrt || exit 1
+          test -f configs/openwrt.config || exit 1
+          test -f configs/immortalwrt.config || exit 1
+          test -f dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts || exit 1
+          echo "✓ All required directories and files exist"
+
+      - name: Check for TODO/FIXME comments
+        run: |
+          echo "Checking for TODO/FIXME items..."
+          grep -rn "TODO\|FIXME" . --exclude-dir=.git || \
+            echo "✓ No TODO/FIXME items found"
+
+# Note: Full firmware building is disabled in CI/CD due to:
+# - Very long build time (2-4 hours per firmware)
+# - High disk space requirements (30GB+ per build)
+# - Significant CPU and memory usage
+#
+# To build firmware, run the scripts locally:
+#   ./build-openwrt.sh
+#   ./build-immortalwrt.sh

@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 OPENWRT_REPO="https://github.com/openwrt/openwrt.git"
 OPENWRT_BRANCH="openwrt-24.10"
 BUILD_DIR="openwrt-build"
-DEVICE_NAME="zbtlink_zbt-z8102ax-v2-emmc"
+DEVICE_NAME="zbtlink_z8102ax-emmc"
 TARGET="mediatek"
 SUBTARGET="filogic"
 

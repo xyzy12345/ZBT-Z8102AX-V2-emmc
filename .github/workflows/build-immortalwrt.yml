@@ -1,0 +1,109 @@
+name: ImmortalWrt 24.10.4 for ZBT Z8102AX-eMMC
+
+on:
+  push:
+    paths:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    
+    steps:
+    - name: 检出ImmortalWrt源码
+      uses: actions/checkout@v4
+      with:
+        repository: immortalwrt/immortalwrt
+        ref: v24.10.4
+        path: openwrt
+    
+    - name: 检出配置文件
+      uses: actions/checkout@v4
+      with:
+        path: config-repo
+    
+    - name: 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib \
+          gettext git libncurses5-dev libssl-dev python3 python3-distutils rsync unzip zlib1g-dev
+    
+    - name: 准备设备支持
+      working-directory: ./openwrt
+      run: |
+        # 复制DTS文件
+        mkdir -p target/linux/mediatek/dts/
+        cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
+        
+        # 添加设备定义到filogic.mk
+        if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
+          cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
+
+define Device/zbt_z8102ax-emmc
+  DEVICE_VENDOR := ZBT
+  DEVICE_MODEL := Z8102AX-eMMC
+  DEVICE_DTS := mt7981-zbt-z8102ax-emmc
+  SUPPORTED_DEVICES := zbt,z8102ax-emmc
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += zbt_z8102ax-emmc
+EOF
+        fi
+    
+    - name: 使用原厂配置升级
+      working-directory: ./openwrt
+      run: |
+        # 更新feeds
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+        # 使用原厂配置
+        cp ../config-repo/config/original.config .config
+        
+        # 升级内核配置
+        yes "" | make kernel_oldconfig 2>/dev/null || true
+        
+        # 应用必要修复
+        cat >> .config << 'EOF'
+# 分区大小
+CONFIG_TARGET_KERNEL_PARTSIZE=32
+CONFIG_TARGET_ROOTFS_PARTSIZE=7168
+
+# 内核压缩
+CONFIG_KERNEL_XZ=y
+
+# EMMC支持
+CONFIG_MMC=y
+CONFIG_MMC_MTK=y
+CONFIG_MMC_SDHCI_MTK=y
+
+# MT7981驱动
+CONFIG_PACKAGE_kmod-mt7981-firmware=y
+CONFIG_PACKAGE_mt7981-wo-firmware=y
+
+# 目标平台
+CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
+EOF
+        
+        make defconfig
+    
+    - name: 复制自定义文件
+      working-directory: ./openwrt
+      run: |
+        if [ -d "../config-repo/files" ]; then
+          cp -r ../config-repo/files/* files/
+        fi
+    
+    - name: 编译
+      working-directory: ./openwrt
+      run: |
+        make download -j$(nproc)
+        make -j$(nproc) V=s 2>&1 | tee build.log
+    
+    - name: 上传固件
+      uses: actions/upload-artifact@v4
+      with:
+        name: immortalwrt-z8102ax
+        path: openwrt/bin/targets/mediatek/filogic/
+        retention-days: 30

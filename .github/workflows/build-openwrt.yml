@@ -1,294 +1,268 @@
-name: Build OpenWrt for ZBT-Z8102AX-eMMC
+name: OpenWrt 24.10.4 for ZBT Z8102AX-eMMC (使用原厂配置)
 
 on:
   push:
-    branches: [ main, master ]
     paths:
-      - '.github/workflows/build-openwrt.yml'
       - 'config/**'
-      - 'dts/**'
-      - 'patches/**'
-  pull_request:
-    branches: [ main, master ]
-  schedule:
-    # 每月1号早上6点自动编译
-    - cron: '0 6 1 * *'
+      - '.github/workflows/build-openwrt.yml'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'OpenWrt 版本'
-        required: true
-        default: '24.10.4'
-        type: choice
-        options:
-          - '24.10.4'
-          - 'master'
-
-env:
-  REPO_URL: https://github.com/openwrt/openwrt
-  REPO_BRANCH: ${{ github.event.inputs.version || 'openwrt-24.10.4' }}
-  FEEDS_CONF: feeds.conf.default
-  TARGET: mediatek
-  SUBTARGET: mt7981
-  PROFILE: zbtlink_z8102ax-emmc
-  BUILD_THREADS: 4
+      create_release:
+        description: '创建GitHub Release'
+        required: false
+        default: 'false'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-
+    runs-on: ubuntu-24.04
+    
     steps:
-    - name: Checkout OpenWrt Source
+    - name: 检出OpenWrt源码
       uses: actions/checkout@v4
       with:
-        submodules: true
+        repository: openwrt/openwrt
+        ref: v24.10.4
         path: openwrt
-
-    - name: Checkout Custom Files
+    
+    - name: 检出配置仓库
       uses: actions/checkout@v4
       with:
-        path: custom
-
-    # 设置自定义 DTS 和配置
-    - name: Setup Custom Configuration
-      run: |
-        echo "=== 复制自定义文件到 OpenWrt 源码 ==="
-        
-        # 复制 DTS 文件
-        if [ -f "custom/dts/mt7981-emmc-rfb-z8102ax.dts" ]; then
-          mkdir -p openwrt/target/linux/mediatek/dts/
-          cp custom/dts/mt7981-emmc-rfb-z8102ax.dts openwrt/target/linux/mediatek/dts/
-          echo "✓ DTS 文件已复制"
-        else
-          echo "⚠ 未找到自定义 DTS 文件，将无法编译 Z8102AX"
-          exit 1
-        fi
-
-        # 复制配置文件
-        if [ -f "custom/config/z8102ax-openwrt.config" ]; then
-          cp custom/config/z8102ax-openwrt.config openwrt/
-          echo "✓ 配置文件已复制"
-        fi
-
-        # 复制 patches
-        if [ -d "custom/patches" ]; then
-          cp -r custom/patches/* openwrt/patches/ 2>/dev/null || true
-          echo "✓ Patches 已复制"
-        fi
-
-    # 设置构建环境
-    - name: Setup Build Environment
+        path: config-repo
+    
+    - name: 安装依赖
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses5-dev libssl-dev python3 python3-pip python3-setuptools \
-          python3-dev rsync unzip zlib1g-dev file wget curl cmake libelf-dev \
-          upx dos2unix libtool-bin time bc locales
-
-        sudo locale-gen en_US.UTF-8
-
-    - name: Clone OpenWrt Repository
-      if: steps.cache.outputs.cache-hit != 'true'
+        sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk \
+          gettext git java-propose-classpath libelf-dev libncurses5-dev \
+          libncursesw5-dev libssl-dev python3 python3-distutils python3-setuptools \
+          python3-dev rsync subversion swig time xsltproc zlib1g-dev \
+          gcc-multilib flex bison gperf unzip patch texinfo wget curl
+    
+    - name: 添加设备支持
+      working-directory: ./openwrt
       run: |
-        if [ ! -d "openwrt/.git" ]; then
-          rm -rf openwrt
-          git clone --depth=1 --branch=${{ env.REPO_BRANCH }} ${{ env.REPO_URL }} openwrt
-        else
-          cd openwrt
-          git fetch origin ${{ env.REPO_BRANCH }}
-          git checkout ${{ env.REPO_BRANCH }}
-          git pull origin ${{ env.REPO_BRANCH }}
+        # 复制DTS文件（如果有）
+        if [ -f "../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts" ]; then
+          mkdir -p target/linux/mediatek/dts/
+          cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
         fi
-
-    - name: Update and Install Feeds
+        
+        # 添加设备定义到filogic.mk
+        if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "define Device/zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_VENDOR := ZBT" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_MODEL := Z8102AX-eMMC" >> target/linux/mediatek/image/filogic.mk
+          if [ -f "../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts" ]; then
+            echo "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          else
+            echo "  DEVICE_DTS := mt7981-zbtlink-z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          fi
+          echo "  DEVICE_DTS_DIR := \$(DTS_DIR)/mediatek" >> target/linux/mediatek/image/filogic.mk
+          echo "  SUPPORTED_DEVICES := zbt,z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> target/linux/mediatek/image/filogic.mk
+          echo "endef" >> target/linux/mediatek/image/filogic.mk
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "TARGET_DEVICES += zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+        fi
+    
+    - name: 使用原厂配置升级
+      working-directory: ./openwrt
       run: |
-        cd openwrt
+        echo "=== 开始配置升级 ==="
+        
+        # 更新feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-
-    # 添加自定义设备到 Makefile
-    - name: Add Custom Device Definition (OpenWrt)
-      run: |
-        cd openwrt
         
-        # 检查 mt7981.mk 是否存在
-        if [ ! -f "target/linux/mediatek/image/mt7981.mk" ]; then
-          echo "⚠ mt7981.mk 不存在，创建新文件"
-          mkdir -p target/linux/mediatek/image/
-          touch target/linux/mediatek/image/mt7981.mk
+        # 检查原厂配置是否存在
+        if [ ! -f "../config-repo/config/original.config" ]; then
+          echo "错误：未找到原厂配置文件 config/original.config"
+          echo "请将原厂21.02的.config文件放入config/目录并命名为original.config"
+          exit 1
         fi
         
-        # 备份原文件
-        cp target/linux/mediatek/image/mt7981.mk target/linux/mediatek/image/mt7981.mk.bak
+        # 复制原厂配置
+        cp ../config-repo/config/original.config .config
         
-        # 添加 Z8102AX 设备定义
-        cat >> target/linux/mediatek/image/mt7981.mk << 'EOF'
+        echo "原厂配置已加载，开始升级到24.10.4..."
+        
+        # 备份原配置
+        cp .config .config.original
+        
+        # 升级内核配置（从21.02升级到24.10.4）
+        echo "升级内核配置..."
+        yes "" | make kernel_oldconfig 2>/dev/null || {
+          echo "内核配置升级遇到问题，继续..."
+        }
+        
+        # 应用必要的配置修复和优化
+        echo "应用必要配置修复..."
+        cat >> .config << 'EOF'
 
-# ZBT Z8102AX (eMMC) 设备定义
-define Device/zbtlink_z8102ax-emmc
-  DEVICE_VENDOR := ZBT
-  DEVICE_MODEL := Z8102AX (eMMC)
-  DEVICE_DTS := mt7981-emmc-rfb-z8102ax
-  DEVICE_DTS_DIR := \$$(DTS_DIR)/mediatek
-  SUPPORTED_DEVICES := zbtlink,z8102ax-emmc mediatek,mt7981-emmc-rfb
-  
-  # eMMC 设备参数
-  IMAGES := sysupgrade.bin
-  IMAGE_SIZE := 116736k
-  
-  # OpenWrt 24.10.4 使用不同的内核打包方式
-  KERNEL := kernel-bin | gzip | fit gzip \$$(KDIR)/image-\$$(firstword \$$(DEVICE_DTS)).dtb
-  IMAGE/sysupgrade.bin := append-kernel | pad-to 64M | \\
-        append-rootfs | pad-rootfs | check-size | append-metadata
-  
-  DEVICE_PACKAGES := kmod-mt7981-firmware kmod-mmc kmod-fs-ext4 kmod-fs-f2fs
-endef
-TARGET_DEVICES += zbtlink_z8102ax-emmc
-EOF
-        
-        echo "✓ 已添加 Z8102AX 设备定义到 OpenWrt"
-
-    # 配置编译选项
-    - name: Configure Build (OpenWrt)
-      run: |
-        cd openwrt
-        
-        # 复制默认配置
-        if [ -f "../custom/config/z8102ax-openwrt.config" ]; then
-          cp ../custom/config/z8102ax-openwrt.config .config
-          echo "✓ 使用自定义配置文件"
-        else
-          # 生成 OpenWrt 默认配置
-          cat > .config << 'EOF'
+# ========== 配置修复和优化 ==========
+# 目标平台
 CONFIG_TARGET_mediatek=y
-CONFIG_TARGET_mediatek_mt7981=y
-CONFIG_TARGET_mediatek_mt7981_DEVICE_zbtlink_z8102ax-emmc=y
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
-CONFIG_TARGET_ROOTFS_PARTSIZE=2048
-# LuCI
+CONFIG_TARGET_mediatek_filogic=y
+
+# 内核分区大小（保持原厂32MB）
+CONFIG_TARGET_KERNEL_PARTSIZE=32
+# RootFS分区大小（保持原厂7GB）
+CONFIG_TARGET_ROOTFS_PARTSIZE=7168
+
+# 内核压缩优化（使用XZ获得最佳压缩比）
+CONFIG_KERNEL_XZ=y
+# CONFIG_KERNEL_GZIP is not set
+# CONFIG_KERNEL_BZIP2 is not set
+# CONFIG_KERNEL_LZMA is not set
+# CONFIG_KERNEL_LZO is not set
+
+# 禁用调试信息以减小内核大小
+# CONFIG_DEBUG_INFO is not set
+# CONFIG_DEBUG_KERNEL is not set
+CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+
+# EMMC/MMC支持（必需）
+CONFIG_MMC=y
+CONFIG_MMC_BLOCK=y
+CONFIG_MMC_MTK=y
+CONFIG_MMC_SDHCI_MTK=y
+CONFIG_BLK_DEV_SD=y
+
+# 文件系统支持
+CONFIG_FS_EXT4=y
+CONFIG_EXT4_FS_POSIX_ACL=y
+CONFIG_EXT4_FS_SECURITY=y
+CONFIG_FS_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+
+# 分区表支持
+CONFIG_PARTITION_ADVANCED=y
+CONFIG_EFI_PARTITION=y
+
+# MT7981特定驱动
+CONFIG_PACKAGE_kmod-mt7981-firmware=y
+CONFIG_PACKAGE_mt7981-wo-firmware=y
+CONFIG_PACKAGE_kmod-mt753x=y
+
+# 基础网络
+CONFIG_PACKAGE_kmod-ipt-core=y
+CONFIG_PACKAGE_kmod-ipt-filter=y
+CONFIG_PACKAGE_kmod-ipt-offload=y
+
+# LuCI基础
 CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-compat=y
 CONFIG_PACKAGE_luci-theme-bootstrap=y
 CONFIG_PACKAGE_luci-app-firewall=y
 CONFIG_PACKAGE_luci-app-opkg=y
-CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-# 基础包
-CONFIG_PACKAGE_block-mount=y
-CONFIG_PACKAGE_fdisk=y
-CONFIG_PACKAGE_lsblk=y
-CONFIG_PACKAGE_blkid=y
-CONFIG_PACKAGE_e2fsprogs=y
-CONFIG_PACKAGE_f2fs-tools=y
-CONFIG_PACKAGE_resize2fs=y
-# 网络工具
-CONFIG_PACKAGE_iperf3=y
-CONFIG_PACKAGE_ip-full=y
-CONFIG_PACKAGE_tcpdump=y
-CONFIG_PACKAGE_curl=y
-CONFIG_PACKAGE_wget=y
-# 内核模块
-CONFIG_PACKAGE_kmod-mmc=y
-CONFIG_PACKAGE_kmod-fs-ext4=y
-CONFIG_PACKAGE_kmod-fs-f2fs=y
-CONFIG_PACKAGE_kmod-fs-vfat=y
-CONFIG_PACKAGE_kmod-usb-storage=y
-CONFIG_PACKAGE_kmod-usb-serial=y
-CONFIG_PACKAGE_kmod-usb-serial-option=y
-CONFIG_PACKAGE_kmod-usb-net=y
-CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
-CONFIG_PACKAGE_kmod-usb-net-sierrawireless=y
-CONFIG_PACKAGE_kmod-ipt-offload=y
-# WiFi
-CONFIG_PACKAGE_kmod-mt7981-firmware=y
-CONFIG_PACKAGE_mt7981-wo-firmware=y
-# 其他
-CONFIG_PACKAGE_ppp-mod-pppoe=y
-CONFIG_PACKAGE_dnsmasq-full=y
-CONFIG_PACKAGE_odhcpd-ipv6only=y
-CONFIG_PACKAGE_odhcp6c=y
-EOF
-          echo "✓ 使用默认配置文件"
-        fi
-        
-        # 运行 defconfig
-        make defconfig
-        echo "✓ 配置完成"
 
-    # 开始编译
-    - name: Build OpenWrt Firmware
-      run: |
-        cd openwrt
-        make -j${{ env.BUILD_THREADS }} V=s 2>&1 | tee build.log
+# 确保设备被选中
+CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
+EOF
         
-        # 检查编译结果
-        FIRMWARE_PATH="bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/openwrt-${{ env.TARGET }}-${{ env.SUBTARGET }}-${{ env.PROFILE }}-squashfs-sysupgrade.bin"
-        if [ -f "$FIRMWARE_PATH" ]; then
-          echo "✓ OpenWrt 编译成功！"
-          ls -lh bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
+        # 运行defconfig来规范化配置
+        echo "规范化配置..."
+        make defconfig
+        
+        # 显示关键配置
+        echo "=== 关键配置检查 ==="
+        grep -E "CONFIG_TARGET_KERNEL_PARTSIZE|CONFIG_TARGET_ROOTFS_PARTSIZE|CONFIG_KERNEL_XZ|CONFIG_MMC_MTK" .config || true
+    
+    - name: 下载源码
+      working-directory: ./openwrt
+      run: |
+        echo "下载软件包源码..."
+        make download -j$(nproc) V=s 2>&1 | tee download.log
+        
+        # 清理可能损坏的下载
+        find dl -size -1024c -exec rm -f {} \; 2>/dev/null || true
+    
+    - name: 编译
+      working-directory: ./openwrt
+      timeout-minutes: 150
+      run: |
+        echo "开始编译过程..."
+        
+        # 编译工具链
+        echo "编译工具链..."
+        make toolchain/compile -j$(nproc) V=s 2>&1 | tee toolchain.log
+        
+        # 编译固件
+        echo "编译固件..."
+        make -j$(($(nproc)+1)) V=s 2>&1 | tee build.log
+        
+        # 如果失败，尝试单线程
+        if [ $? -ne 0 ]; then
+          echo "并行编译失败，尝试单线程..."
+          make -j1 V=s 2>&1 | tee build-single.log
+        fi
+    
+    - name: 验证编译结果
+      if: success()
+      working-directory: ./openwrt
+      run: |
+        echo "=== 验证编译结果 ==="
+        
+        # 查找生成的固件
+        if [ -d "bin/targets/mediatek/filogic" ]; then
+          echo "固件目录内容:"
+          ls -la bin/targets/mediatek/filogic/
           
-          # 检查固件大小
-          FIRMWARE_SIZE=$(stat -c%s "$FIRMWARE_PATH")
-          FIRMWARE_SIZE_MB=$((FIRMWARE_SIZE / 1024 / 1024))
-          echo "固件大小: ${FIRMWARE_SIZE_MB}MB"
-          
-          if [ $FIRMWARE_SIZE_MB -gt 100 ]; then
-            echo "⚠ 固件大小超过 100MB，请检查配置"
-          fi
+          echo ""
+          echo "设备相关固件:"
+          find bin/targets/mediatek/filogic -name "*zbt*" -o -name "*z8102ax*" | while read file; do
+            if [ -f "$file" ]; then
+              size=$(stat -c%s "$file" 2>/dev/null || echo "未知")
+              human_size=$(numfmt --to=iec --suffix=B $size 2>/dev/null || echo "${size}字节")
+              echo "- $(basename "$file") ($human_size)"
+            fi
+          done
         else
-          echo "✗ OpenWrt 编译失败！"
-          tail -100 build.log
+          echo "错误：未找到固件目录"
           exit 1
         fi
-
-    # 上传编译产物
-    - name: Upload OpenWrt Artifacts
+        
+        # 检查配置差异
+        echo ""
+        echo "=== 配置差异摘要 ==="
+        if [ -f ".config.original" ] && [ -f ".config" ]; then
+          echo "原厂配置和新配置的主要差异:"
+          diff -u .config.original .config | grep -E "^[-+]CONFIG_" | head -20 || echo "无显著差异"
+        fi
+    
+    - name: 上传固件到Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: openwrt-z8102ax-firmware
         path: |
-          openwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
-          openwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/packages/
+          openwrt/bin/targets/mediatek/filogic/
+          openwrt/.config
+          openwrt/.config.original
           openwrt/build.log
         retention-days: 30
-
-    # 生成发布版本
-    - name: Create OpenWrt Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    - name: 创建GitHub Release
+      if: github.event.inputs.create_release == 'true'
       uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: OpenWrt ${{ env.REPO_BRANCH }} for ZBT-Z8102AX
-        tag_name: openwrt-${{ env.REPO_BRANCH }}-z8102ax-$(date +%Y%m%d)
+        files: openwrt/bin/targets/mediatek/filogic/*zbt_z8102ax-emmc*
+        tag_name: openwrt-24.10.4-z8102ax-$(date +%Y%m%d-%H%M%S)
+        name: OpenWrt 24.10.4 for ZBT Z8102AX-eMMC
         body: |
-          # OpenWrt ${{ env.REPO_BRANCH }} for ZBT-Z8102AX (eMMC)
+          OpenWrt 24.10.4 固件 for ZBT Z8102AX-eMMC
           
-          ## 设备信息
-          - **型号**: ZBT-Z8102AX (eMMC版本)
-          - **平台**: MediaTek MT7981 (Filogic 820)
-          - **存储**: 128GB eMMC
-          - **内存**: 1GB DDR4
-          - **网络**: 2.5G WAN + 4x Gigabit LAN
+          基于原厂21.02配置升级编译
           
-          ## 固件特性
-          - 基于 OpenWrt ${{ env.REPO_BRANCH }}
-          - 包含 LuCI Web 界面 (中文)
-          - 支持 USB 4G 模块
-          - 完整的网络功能
-          - 64MB 内核分区优化
+          编译时间: $(date)
           
-          ## 注意事项
-          - OpenWrt 官方对 MT7981 支持可能不如 ImmortalWrt 完整
-          - 如需更多功能建议使用 ImmortalWrt 版本
-          
-          ## 刷机说明
-          1. 通过 Web 界面刷入 sysupgrade.bin
-          2. 或通过 U-Boot 刷写
-          
-          ## 编译信息
-          - **编译时间**: $(date)
-          - **分支**: ${{ env.REPO_BRANCH }}
-          - **提交**: ${{ github.sha }}
-        files: |
-          openwrt/bin/targets/${{ env.TARGET }}/${{ env.SUBTARGET }}/*.bin
-        draft: false
+          注意事项:
+          1. 使用原厂21.02配置文件升级
+          2. 内核分区: 32MB
+          3. RootFS分区: 7GB
+          4. 使用XZ内核压缩
+          5. 包含EMMC驱动支持
+        draft: true
         prerelease: false

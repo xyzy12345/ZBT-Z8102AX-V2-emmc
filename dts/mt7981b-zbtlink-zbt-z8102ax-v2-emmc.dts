@@ -27,7 +27,8 @@
 
 	memory@40000000 {
 		device_type = "memory";
-		reg = <0 0x40000000 0 0x40000000>; // 1GB RAM
+		/* Memory region: base address 0x40000000, size 0x40000000 (1GB) */
+		reg = <0 0x40000000 0 0x40000000>;
 	};
 
 	gpio-keys {
@@ -182,7 +183,8 @@
 &spi0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi0_flash_pins>;
-	status = "disabled"; // SPI flash disabled for eMMC version
+	/* SPI flash disabled for eMMC version - eMMC replaces SPI-NAND storage */
+	status = "disabled";
 };
 
 // eMMC Configuration
@@ -233,7 +235,8 @@
 
 		partition@580000 {
 			label = "ubi";
-			reg = <0x580000 0x7a80000>; // Rest of space (~122MB)
+			/* Rest of eMMC space: 0x7a80000 bytes (122.5MB) for rootfs and overlay */
+			reg = <0x580000 0x7a80000>;
 		};
 	};
 };

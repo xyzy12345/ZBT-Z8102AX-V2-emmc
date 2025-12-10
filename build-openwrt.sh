@@ -84,7 +84,14 @@ if [ -d "../patches/openwrt" ]; then
     for patch in ../patches/openwrt/*.patch; do
         if [ -f "$patch" ]; then
             echo "Applying: $(basename $patch)"
-            patch -p1 < "$patch" || echo -e "${YELLOW}Warning: Patch may already be applied${NC}"
+            if ! patch -p1 --dry-run < "$patch" > /dev/null 2>&1; then
+                echo -e "${YELLOW}Warning: Patch $(basename $patch) may already be applied or conflicts exist${NC}"
+            else
+                patch -p1 < "$patch" || {
+                    echo -e "${RED}Error: Failed to apply patch $(basename $patch)${NC}"
+                    exit 1
+                }
+            fi
         fi
     done
 fi

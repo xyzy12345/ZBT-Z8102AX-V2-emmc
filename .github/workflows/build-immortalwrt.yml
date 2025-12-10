@@ -75,17 +75,15 @@ jobs:
         
         # 添加设备定义到filogic.mk
         if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
-          cat >> target/linux/mediatek/image/filogic.mk <<'DEVICEEOF'
-        
-        define Device/zbt_z8102ax-emmc
-          DEVICE_VENDOR := ZBT
-          DEVICE_MODEL := Z8102AX-eMMC
-          DEVICE_DTS := mt7981-zbt-z8102ax-emmc
-          SUPPORTED_DEVICES := zbt,z8102ax-emmc
-          IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-        endef
-        TARGET_DEVICES += zbt_z8102ax-emmc
-        DEVICEEOF
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "define Device/zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_VENDOR := ZBT" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_MODEL := Z8102AX-eMMC" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  SUPPORTED_DEVICES := zbt,z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> target/linux/mediatek/image/filogic.mk
+          echo "endef" >> target/linux/mediatek/image/filogic.mk
+          echo "TARGET_DEVICES += zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
         fi
     
     - name: 更新Feeds
@@ -127,58 +125,7 @@ jobs:
         
         # 使用非交互式方式接受所有默认值
         echo "执行非交互式配置升级..."
-        cat <<'YESEOF' | make oldconfig
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        y
-        YESEOF
+        yes y | head -50 | make oldconfig
         
         # 如果上述方法失败，使用备用方案
         if [ $? -ne 0 ]; then
@@ -228,6 +175,9 @@ jobs:
         CONFIG_PACKAGE_luci=y
         CONFIG_PACKAGE_luci-compat=y
         CONFIGEOF
+        
+        # 删除配置文件中的前导空格
+        sed -i 's/^        //' .config
         
         # 最终确认配置
         echo "最终配置检查..."

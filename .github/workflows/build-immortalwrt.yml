@@ -75,17 +75,15 @@ jobs:
         
         # 添加设备定义到filogic.mk
         if ! grep -q "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
-          cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
-
-define Device/zbt_z8102ax-emmc
-  DEVICE_VENDOR := ZBT
-  DEVICE_MODEL := Z8102AX-eMMC
-  DEVICE_DTS := mt7981-zbt-z8102ax-emmc
-  SUPPORTED_DEVICES := zbt,z8102ax-emmc
-  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-endef
-TARGET_DEVICES += zbt_z8102ax-emmc
-EOF
+          echo "" >> target/linux/mediatek/image/filogic.mk
+          echo "define Device/zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_VENDOR := ZBT" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_MODEL := Z8102AX-eMMC" >> target/linux/mediatek/image/filogic.mk
+          echo "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  SUPPORTED_DEVICES := zbt,z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
+          echo "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata" >> target/linux/mediatek/image/filogic.mk
+          echo "endef" >> target/linux/mediatek/image/filogic.mk
+          echo "TARGET_DEVICES += zbt_z8102ax-emmc" >> target/linux/mediatek/image/filogic.mk
         fi
     
     - name: 更新Feeds
@@ -127,58 +125,7 @@ EOF
         
         # 使用非交互式方式接受所有默认值
         echo "执行非交互式配置升级..."
-        cat << 'EOF' | make oldconfig
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-y
-EOF
+        yes y | make oldconfig || true
         
         # 如果上述方法失败，使用备用方案
         if [ $? -ne 0 ]; then
@@ -198,36 +145,39 @@ EOF
         
         # 应用必要的修复配置
         echo "应用必要的配置修复..."
-        cat >> .config << 'EOF'
-# 分区大小
-CONFIG_TARGET_KERNEL_PARTSIZE=32
-CONFIG_TARGET_ROOTFS_PARTSIZE=7168
-
-# 内核压缩
-CONFIG_KERNEL_XZ=y
-# CONFIG_DEBUG_INFO is not set
-
-# EMMC支持
-CONFIG_MMC=y
-CONFIG_MMC_MTK=y
-CONFIG_MMC_SDHCI_MTK=y
-
-# MT7981驱动
-CONFIG_PACKAGE_kmod-mt7981-firmware=y
-CONFIG_PACKAGE_mt7981-wo-firmware=y
-
-# 目标平台
-CONFIG_TARGET_mediatek=y
-CONFIG_TARGET_mediatek_filogic=y
-CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
-
-# 基础网络
-CONFIG_PACKAGE_kmod-ipt-core=y
-
-# LuCI基础
-CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-compat=y
-EOF
+        cat >> .config <<'CONFIGEOF'
+        # 分区大小
+        CONFIG_TARGET_KERNEL_PARTSIZE=32
+        CONFIG_TARGET_ROOTFS_PARTSIZE=7168
+        
+        # 内核压缩
+        CONFIG_KERNEL_XZ=y
+        # CONFIG_DEBUG_INFO is not set
+        
+        # EMMC支持
+        CONFIG_MMC=y
+        CONFIG_MMC_MTK=y
+        CONFIG_MMC_SDHCI_MTK=y
+        
+        # MT7981驱动
+        CONFIG_PACKAGE_kmod-mt7981-firmware=y
+        CONFIG_PACKAGE_mt7981-wo-firmware=y
+        
+        # 目标平台
+        CONFIG_TARGET_mediatek=y
+        CONFIG_TARGET_mediatek_filogic=y
+        CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
+        
+        # 基础网络
+        CONFIG_PACKAGE_kmod-ipt-core=y
+        
+        # LuCI基础
+        CONFIG_PACKAGE_luci=y
+        CONFIG_PACKAGE_luci-compat=y
+        CONFIGEOF
+        
+        # 删除配置文件中的前导空格
+        sed -i 's/^[[:space:]]*//' .config
         
         # 最终确认配置
         echo "最终配置检查..."

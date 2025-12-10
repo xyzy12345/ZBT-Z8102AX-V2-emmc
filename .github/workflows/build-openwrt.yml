@@ -1,0 +1,208 @@
+name: OpenWrt 24.10.4 for ZBT Z8102AX-eMMC
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    
+    steps:
+    - name: 检出OpenWrt源码
+      uses: actions/checkout@v4
+      with:
+        repository: openwrt/openwrt
+        ref: v24.10.4
+        path: openwrt
+    
+    - name: 检出配置文件
+      uses: actions/checkout@v4
+      with:
+        path: config-repo
+    
+    - name: 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib \
+          gettext git libncurses5-dev libssl-dev python3 python3-dev python3-setuptools \
+          rsync unzip zlib1g-dev file wget curl
+    
+    - name: 准备设备支持
+      working-directory: ./openwrt
+      run: |
+        # 复制DTS文件
+        mkdir -p target/linux/mediatek/dts/
+        cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
+        
+        # 修改filogic.mk - 使用sed确保正确添加
+        sed -i '/^TARGET_DEVICES +=/a TARGET_DEVICES += zbt_z8102ax-emmc' target/linux/mediatek/image/filogic.mk
+        
+        # 在文件末尾添加设备定义
+        cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
+
+define Device/zbt_z8102ax-emmc
+  DEVICE_VENDOR := ZBT
+  DEVICE_MODEL := Z8102AX-eMMC
+  DEVICE_DTS := mt7981-zbt-z8102ax-emmc
+  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
+  SUPPORTED_DEVICES := zbt,z8102ax-emmc
+  DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+EOF
+        
+        echo "设备定义已添加"
+    
+    - name: 创建正确配置
+      working-directory: ./openwrt
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+        echo "创建配置文件..."
+        
+        # 先创建一个最小配置
+        make defconfig
+        
+        # 然后添加我们的设备配置
+        cat >> .config << 'EOF'
+# 选择目标平台
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+
+# 选择我们的设备
+CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
+
+# 分区大小
+CONFIG_TARGET_KERNEL_PARTSIZE=32
+CONFIG_TARGET_ROOTFS_PARTSIZE=7168
+
+# 内核压缩
+CONFIG_KERNEL_XZ=y
+
+# 必须的驱动
+CONFIG_PACKAGE_kmod-mt7981-firmware=y
+CONFIG_PACKAGE_mt7981-wo-firmware=y
+CONFIG_PACKAGE_kmod-mt753x=y
+
+# EMMC支持
+CONFIG_PACKAGE_kmod-mmc=y
+CONFIG_PACKAGE_kmod-mtk-mmc=y
+
+# 基础系统
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+
+# 工具
+CONFIG_PACKAGE_blkid=y
+CONFIG_PACKAGE_blockdev=y
+CONFIG_PACKAGE_fdisk=y
+
+# 确保生成完整镜像
+CONFIG_IB=y
+CONFIG_IMAGEOPT=y
+CONFIG_PER_DEVICE_ROOTFS=y
+EOF
+        
+        # 应用配置
+        make defconfig
+        
+        # 验证设备配置
+        echo "当前配置摘要:"
+        grep -E "CONFIG_TARGET.*DEVICE|CONFIG_TARGET.*filogic" .config | head -10
+    
+    - name: 创建升级脚本
+      working-directory: ./openwrt
+      run: |
+        mkdir -p files/lib/upgrade/
+        cat > files/lib/upgrade/platform.sh << 'EOF'
+#!/bin/sh
+
+platform_do_upgrade() {
+    local board=$(board_name)
+    
+    case "$board" in
+    zbt,z8102ax-emmc)
+        echo "ZBT Z8102AX-eMMC设备，使用MTK MMC升级"
+        mtk_mmc_do_upgrade "$1"
+        ;;
+    *)
+        echo "未知设备，使用默认升级"
+        default_do_upgrade "$1"
+        ;;
+    esac
+}
+
+PART_NAME=firmware
+
+platform_check_image() {
+    local board=$(board_name)
+    
+    case "$board" in
+    zbt,z8102ax-emmc)
+        echo "检查ZBT Z8102AX-eMMC固件"
+        return 0
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+EOF
+        chmod +x files/lib/upgrade/platform.sh
+    
+    - name: 编译
+      working-directory: ./openwrt
+      timeout-minutes: 120
+      run: |
+        echo "下载源码包..."
+        make download -j$(nproc)
+        
+        echo "开始编译..."
+        make -j$(($(nproc)+1)) V=s 2>&1 | tee build.log
+        
+        # 检查是否成功
+        if [ $? -ne 0 ]; then
+          echo "编译失败，尝试单线程..."
+          make -j1 V=s 2>&1 | tee build-single.log
+        fi
+    
+    - name: 检查固件文件
+      working-directory: ./openwrt
+      run: |
+        echo "=== 查找生成的固件 ==="
+        
+        # 列出所有可能的固件
+        echo "1. 所有.bin文件:"
+        find bin/targets -name "*.bin" -type f | head -20
+        
+        echo ""
+        echo "2. 所有.tar文件:"
+        find bin/targets -name "*.tar" -type f | head -20
+        
+        echo ""
+        echo "3. 查找zbt相关文件:"
+        find bin/targets -name "*zbt*" -type f
+        
+        echo ""
+        echo "4. 查找z8102ax相关文件:"
+        find bin/targets -name "*z8102ax*" -type f
+        
+        echo ""
+        echo "5. 完整目录结构:"
+        if [ -d "bin/targets/mediatek/filogic" ]; then
+          ls -R bin/targets/mediatek/filogic/ | head -50
+        fi
+    
+    - name: 上传所有文件
+      uses: actions/upload-artifact@v4
+      with:
+        name: openwrt-build-output
+        path: |
+          openwrt/bin/targets/
+          openwrt/.config
+          openwrt/build.log
+        retention-days: 30

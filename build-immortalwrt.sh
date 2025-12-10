@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 IMMORTALWRT_REPO="https://github.com/immortalwrt/immortalwrt.git"
 IMMORTALWRT_BRANCH="master"
 BUILD_DIR="immortalwrt-build"
-DEVICE_NAME="zbtlink_zbt-z8102ax-v2-emmc"
+DEVICE_NAME="zbtlink_z8102ax-emmc"
 TARGET="mediatek"
 SUBTARGET="filogic"
 

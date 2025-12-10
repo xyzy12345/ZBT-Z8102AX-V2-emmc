@@ -11,8 +11,8 @@
 	};
 
 	memory {
-		// fpga ddr2: 128MB*2
-		reg = <0 0x40000000 0 0x10000000>;
+		// 1GB DDR4
+		reg = <0 0x40000000 0 0x40000000>;
 	};
 
         gpio-keys {

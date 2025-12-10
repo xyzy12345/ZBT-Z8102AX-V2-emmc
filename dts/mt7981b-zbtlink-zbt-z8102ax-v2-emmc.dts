@@ -15,8 +15,8 @@
 #include "mt7981.dtsi"
 
 / {
-	model = "ZBT Z8102AX V2 eMMC";
-	compatible = "zbtlink,zbt-z8102ax-v2-emmc", "mediatek,mt7981";
+	model = "ZBT-Z8102AX-eMMC";
+	compatible = "zbtlink,z8102ax-emmc", "mediatek,mt7981-emmc-rfb";
 
 	aliases {
 		serial0 = &uart0;
@@ -47,7 +47,7 @@
 
 		mesh {
 			label = "mesh";
-			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 0 GPIO_ACTIVE_HIGH>;
 			linux,code = <BTN_0>;
 		};
 	};
@@ -55,29 +55,64 @@
 	leds {
 		compatible = "gpio-leds";
 
-		led_status: status {
-			label = "blue:status";
+		red {
+			label = "red";
+			gpios = <&pio 9 GPIO_ACTIVE_HIGH>;
+		};
+
+		green {
+			label = "green";
 			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
 		};
 
-		led_wan {
-			label = "green:wan";
+		led_status: blue {
+			label = "blue";
 			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
 		};
 
-		led_lan {
-			label = "green:lan";
-			gpios = <&pio 12 GPIO_ACTIVE_LOW>;
+		4g {
+			label = "4g";
+			gpios = <&pio 8 GPIO_ACTIVE_LOW>;
 		};
 
-		led_4g {
-			label = "green:4g";
+		4g2 {
+			label = "4g2";
 			gpios = <&pio 13 GPIO_ACTIVE_LOW>;
 		};
+	};
 
-		led_5g {
-			label = "green:5g";
-			gpios = <&pio 14 GPIO_ACTIVE_LOW>;
+	gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		wdg {
+			gpio-export,name = "wdg";
+			gpio-export,output = <1>;
+			gpios = <&pio 2 GPIO_ACTIVE_HIGH>;
+		};
+
+		4g {
+			gpio-export,name = "4g";
+			gpio-export,output = <1>;
+			gpios = <&pio 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		4g2 {
+			gpio-export,name = "4g2";
+			gpio-export,output = <1>;
+			gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
+		};
+
+		sim {
+			gpio-export,name = "sim";
+			gpio-export,output = <1>;
+			gpios = <&pio 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		sim2 {
+			gpio-export,name = "sim2";
+			gpio-export,output = <1>;
+			gpios = <&pio 7 GPIO_ACTIVE_HIGH>;
 		};
 	};
 

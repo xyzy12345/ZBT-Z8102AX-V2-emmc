@@ -32,111 +32,75 @@ jobs:
     - name: 准备设备DTS
       working-directory: ./openwrt
       run: |
-        # 复制DTS文件
+        # 复制DTS文件（使用OpenWrt 24.10兼容的版本）
         mkdir -p target/linux/mediatek/dts/
-        cp ../config-repo/dts/mt7981-zbt-z8102ax-emmc.dts target/linux/mediatek/dts/
+        cp ../config-repo/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts target/linux/mediatek/dts/
         
         # 验证DTS文件
-        echo "DTS文件内容:"
-        head -20 target/linux/mediatek/dts/mt7981-zbt-z8102ax-emmc.dts
+        echo "DTS文件已复制："
+        ls -l target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts
+        echo ""
+        echo "DTS文件头部内容:"
+        head -30 target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts
     
-    - name: 添加设备定义
+    - name: 添加设备定义到filogic.mk
       working-directory: ./openwrt
       run: |
-        # 备份原filogic.mk
-        cp target/linux/mediatek/image/filogic.mk target/linux/mediatek/image/filogic.mk.backup
-        
-        # 在适当位置添加设备定义（在已有的设备定义后面）
-        awk '
-        /^TARGET_DEVICES \+=/ {
-            # 在最后一个设备后面添加我们的设备
-            print $0
-            print "TARGET_DEVICES += zbt_z8102ax-emmc"
-            next
-        }
-        /^define Device\/.*/ && !added {
-            # 在设备定义区域添加新设备
-            print ""
-            print "define Device/zbt_z8102ax-emmc"
-            print "  DEVICE_VENDOR := ZBT"
-            print "  DEVICE_MODEL := Z8102AX-eMMC"
-            print "  DEVICE_DTS := mt7981-zbt-z8102ax-emmc"
-            print "  DEVICE_DTS_DIR := \$(DTS_DIR)/mediatek"
-            print "  SUPPORTED_DEVICES := zbt,z8102ax-emmc"
-            print "  DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware"
-            print "  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata"
-            print "endef"
-            print ""
-            added = 1
-            next
-        }
-        { print }
-        ' target/linux/mediatek/image/filogic.mk.backup > target/linux/mediatek/image/filogic.mk
+        # 检查设备是否已定义
+        if ! grep -q "zbtlink_z8102ax-emmc" target/linux/mediatek/image/filogic.mk; then
+          echo "在filogic.mk中添加eMMC版本设备定义..."
+          
+          # 在TARGET_DEVICES列表中添加设备
+          sed -i '/^TARGET_DEVICES +=/a TARGET_DEVICES += zbtlink_z8102ax-emmc' target/linux/mediatek/image/filogic.mk
+          
+          # 在文件末尾添加eMMC版本的设备定义
+          cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
+
+define Device/zbtlink_z8102ax-emmc
+  DEVICE_VENDOR := ZBT
+  DEVICE_MODEL := Z8102AX eMMC
+  DEVICE_DTS := mt7981b-zbtlink-zbt-z8102ax-v2-emmc
+  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
+  SUPPORTED_DEVICES := zbtlink,z8102ax-emmc
+  # eMMC specific settings (not NAND/UBI)
+  KERNEL_SIZE := 32768k
+  ROOTFS_SIZE := 7340032k
+  BLOCKSIZE := 64k
+  PAGESIZE := 2048
+  IMAGES := sysupgrade.bin
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware kmod-usb3 \
+    kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
+endef
+TARGET_DEVICES += zbtlink_z8102ax-emmc
+EOF
+          echo "设备定义已添加"
+        else
+          echo "设备定义已存在"
+        fi
         
         # 验证修改
         echo "检查设备定义:"
-        grep -n "zbt_z8102ax-emmc" target/linux/mediatek/image/filogic.mk || echo "未找到设备定义"
+        grep -A 10 "define Device/zbtlink_z8102ax-emmc" target/linux/mediatek/image/filogic.mk || echo "未找到设备定义"
     
-    - name: 创建正确配置
+    - name: 使用预配置文件
       working-directory: ./openwrt
       run: |
         # 更新feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
         
-        echo "创建配置..."
+        echo "使用config/original.config配置..."
         
-        # 创建基础配置
-        cat > .config << 'EOF'
-# Target System
-CONFIG_TARGET_mediatek=y
-CONFIG_TARGET_mediatek_filogic=y
-
-# Device selection
-CONFIG_TARGET_mediatek_filogic_DEVICE_zbt_z8102ax-emmc=y
-
-# Kernel modules
-CONFIG_PACKAGE_kmod-mt7981-firmware=y
-CONFIG_PACKAGE_mt7981-wo-firmware=y
-CONFIG_PACKAGE_kmod-mt753x=y
-
-# Storage (EMMC)
-CONFIG_PACKAGE_kmod-mmc=y
-CONFIG_PACKAGE_kmod-mtk-mmc=y
-CONFIG_PACKAGE_kmod-sdhci=y
-CONFIG_PACKAGE_kmod-sdhci-mtk=y
-
-# Filesystems
-CONFIG_PACKAGE_kmod-fs-ext4=y
-CONFIG_PACKAGE_kmod-fs-squashfs=y
-
-# Base system
-CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-compat=y
-CONFIG_PACKAGE_luci-theme-bootstrap=y
-
-# Network
-CONFIG_PACKAGE_kmod-ipt-core=y
-CONFIG_PACKAGE_iptables=y
-
-# Utilities
-CONFIG_PACKAGE_blkid=y
-CONFIG_PACKAGE_blockdev=y
-CONFIG_PACKAGE_fdisk=y
-CONFIG_PACKAGE_lscpu=y
-
-# Image configuration
-CONFIG_TARGET_ROOTFS_PARTSIZE=7168
-CONFIG_TARGET_KERNEL_PARTSIZE=32
-CONFIG_KERNEL_XZ=y
-EOF
+        # 复制预配置文件（适配ImmortalWrt 24.10）
+        cp ../config-repo/config/original.config .config
         
         # 运行defconfig来规范化配置
         make defconfig
         
         # 验证设备选择
         echo "验证配置:"
-        grep -E "CONFIG_TARGET.*zbt|CONFIG_TARGET.*DEVICE" .config || echo "未找到设备配置"
+        grep -E "CONFIG_TARGET.*zbtlink|CONFIG_TARGET.*DEVICE|CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" .config | head -15
     
     - name: 创建升级脚本
       working-directory: ./openwrt

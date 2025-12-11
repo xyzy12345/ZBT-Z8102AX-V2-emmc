@@ -85,11 +85,23 @@ jobs:
       - name: 使用预配置文件
         working-directory: ./openwrt
         run: |
-          # 更新feeds
+          # 更新feeds（必须在添加设备定义之后）
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
           echo "使用configs/immortalwrt.config配置..."
+
+          # 验证设备定义是否存在
+          echo "检查设备定义是否存在于filogic.mk:"
+          if grep -q "define Device/zbtlink_z8102ax-emmc" \
+              target/linux/mediatek/image/filogic.mk; then
+            echo "✓ 设备定义已存在"
+            grep -A 5 "define Device/zbtlink_z8102ax-emmc" \
+              target/linux/mediatek/image/filogic.mk
+          else
+            echo "✗ 设备定义不存在"
+            exit 1
+          fi
 
           # 复制预配置文件（适配ImmortalWrt 24.10）
           cp ../config-repo/configs/immortalwrt.config .config
@@ -103,6 +115,18 @@ jobs:
             .config | head -15
           grep -E "CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" \
             .config | head -5
+          
+          # 确认设备被正确选择
+          if grep -q "CONFIG_TARGET_mediatek_filogic_DEVICE_zbtlink_z8102ax-emmc=y" .config; then
+            echo "✓ 设备已正确选择"
+          else
+            echo "✗ 设备未被选择，配置可能有问题"
+            echo "重新配置设备..."
+            echo "CONFIG_TARGET_mediatek=y" > .config
+            echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+            echo "CONFIG_TARGET_mediatek_filogic_DEVICE_zbtlink_z8102ax-emmc=y" >> .config
+            make defconfig
+          fi
 
       - name: 创建升级脚本
         working-directory: ./openwrt

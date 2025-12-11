@@ -218,6 +218,22 @@ Additional features on top of OpenWrt:
    - Some sources may require proxy access
    - Edit `~/.gitconfig` to add proxy configuration
 
+4. **Configuration File Warnings**:
+   If you see warnings like:
+   ```
+   .config:22:warning: symbol value '32768      # 32MB kernel partition' invalid for TARGET_KERNEL_PARTSIZE
+   ```
+   This is due to incorrect configuration file format. Configuration values cannot have inline comments; comments must be on separate lines:
+   ```
+   # Incorrect format:
+   CONFIG_TARGET_KERNEL_PARTSIZE=32768      # 32MB kernel partition
+   
+   # Correct format:
+   # 32MB kernel partition
+   CONFIG_TARGET_KERNEL_PARTSIZE=32768
+   ```
+   The configuration files in this repository have been fixed.
+
 ### Device Won't Boot
 
 1. **Check Serial Output**: Connect serial port to view boot logs

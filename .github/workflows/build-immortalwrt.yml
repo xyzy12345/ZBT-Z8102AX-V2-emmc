@@ -40,9 +40,11 @@ jobs:
 
           # 验证DTS文件
           echo "DTS文件已复制："
+          # yamllint disable-line rule:line-length
           ls -l target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts
           echo ""
           echo "DTS文件头部内容:"
+          # yamllint disable-line rule:line-length
           head -30 target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts
 
       - name: 添加设备定义到filogic.mk
@@ -52,10 +54,6 @@ jobs:
           if ! grep -q "zbtlink_z8102ax-emmc" \
               target/linux/mediatek/image/filogic.mk; then
             echo "在filogic.mk中添加eMMC版本设备定义..."
-
-            # 在TARGET_DEVICES列表中添加设备
-            sed -i '/^TARGET_DEVICES +=/a TARGET_DEVICES += zbtlink_z8102ax-emmc' \
-              target/linux/mediatek/image/filogic.mk
 
             # 在文件末尾添加eMMC版本的设备定义
           cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
@@ -73,8 +71,8 @@ jobs:
             PAGESIZE := 2048
             IMAGES := sysupgrade.bin
             IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-            DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware kmod-usb3 \
-              kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
+            DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware \
+              kmod-usb3 kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
           endef
           TARGET_DEVICES += zbtlink_z8102ax-emmc
           EOF
@@ -95,19 +93,20 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "使用config/original.config配置..."
+          echo "使用configs/immortalwrt.config配置..."
 
           # 复制预配置文件（适配ImmortalWrt 24.10）
-          cp ../config-repo/config/original.config .config
+          cp ../config-repo/configs/immortalwrt.config .config
 
           # 运行defconfig来规范化配置
           make defconfig
 
           # 验证设备选择
           echo "验证配置:"
-          grep -E \
-            "CONFIG_TARGET.*zbtlink|CONFIG_TARGET.*DEVICE|CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" \
+          grep -E "CONFIG_TARGET.*zbtlink|CONFIG_TARGET.*DEVICE" \
             .config | head -15
+          grep -E "CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" \
+            .config | head -5
 
       - name: 创建升级脚本
         working-directory: ./openwrt
@@ -203,8 +202,10 @@ jobs:
 
             echo ""
             echo "所有固件文件:"
+            # yamllint disable-line rule:line-length
             find bin/targets/mediatek/filogic -type f \
-              \( -name "*.bin" -o -name "*.tar" -o -name "*.img.gz" \) | head -20
+              \( -name "*.bin" -o -name "*.tar" -o -name "*.img.gz" \) \
+              | head -20
           else
             echo "错误：固件目录不存在"
             exit 1

@@ -218,6 +218,22 @@ CONFIG_PACKAGE_your-package-name=y
    - 某些源可能需要代理访问
    - 编辑 `~/.gitconfig` 添加代理配置
 
+4. **配置文件警告**：
+   如果看到类似以下警告：
+   ```
+   .config:22:warning: symbol value '32768      # 32MB kernel partition' invalid for TARGET_KERNEL_PARTSIZE
+   ```
+   这是因为配置文件格式错误。配置项的值后面不能有内联注释，注释必须放在单独的行上：
+   ```
+   # 错误格式：
+   CONFIG_TARGET_KERNEL_PARTSIZE=32768      # 32MB kernel partition
+   
+   # 正确格式：
+   # 32MB kernel partition
+   CONFIG_TARGET_KERNEL_PARTSIZE=32768
+   ```
+   本仓库的配置文件已修复此问题。
+
 ### 设备无法启动
 
 1. **检查串口输出**：连接串口查看启动日志

@@ -40,16 +40,13 @@ jobs:
 
           # 验证DTS文件已复制
           echo "DTS文件已复制："
+          # yamllint disable-line rule:line-length
           ls -l target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8102ax-v2-emmc.dts
 
           # 在filogic.mk中插入设备定义
           # 找到合适的位置（在TARGET_DEVICES行之后）
           if ! grep -q "zbtlink_z8102ax-emmc" \
               target/linux/mediatek/image/filogic.mk; then
-            # 在TARGET_DEVICES列表中添加设备
-            sed -i '/^TARGET_DEVICES +=/a TARGET_DEVICES += zbtlink_z8102ax-emmc' \
-              target/linux/mediatek/image/filogic.mk
-
             # 在文件末尾添加eMMC版本的设备定义
           cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
 
@@ -66,8 +63,8 @@ jobs:
             PAGESIZE := 2048
             IMAGES := sysupgrade.bin
             IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-            DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware kmod-usb3 \
-              kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
+            DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware \
+              kmod-usb3 kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
           endef
           TARGET_DEVICES += zbtlink_z8102ax-emmc
           EOF
@@ -83,19 +80,20 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          echo "使用config/original.config配置..."
+          echo "使用configs/openwrt.config配置..."
 
           # 复制预配置文件
-          cp ../config-repo/config/original.config .config
+          cp ../config-repo/configs/openwrt.config .config
 
           # 应用配置
           make defconfig
 
           # 验证设备配置
           echo "当前配置摘要:"
-          grep -E \
-            "CONFIG_TARGET.*DEVICE|CONFIG_TARGET.*filogic|CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" \
-            .config | head -15
+          grep -E "CONFIG_TARGET.*DEVICE|CONFIG_TARGET.*filogic" \
+            .config | head -10
+          grep -E "CONFIG_TARGET_BOARD|CONFIG_TARGET_SUBTARGET" \
+            .config | head -5
 
       - name: 创建升级脚本
         working-directory: ./openwrt

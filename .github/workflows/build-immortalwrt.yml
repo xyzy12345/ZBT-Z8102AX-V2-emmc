@@ -59,20 +59,16 @@ jobs:
           cat >> target/linux/mediatek/image/filogic.mk << 'EOF'
 
           define Device/zbtlink_z8102ax-emmc
+            $(call Device/dsa-migration)
             DEVICE_VENDOR := ZBT
-            DEVICE_MODEL := Z8102AX eMMC
+            DEVICE_MODEL := Z8102AX
+            DEVICE_VARIANT := eMMC
             DEVICE_DTS := mt7981b-zbtlink-zbt-z8102ax-v2-emmc
-            DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
             SUPPORTED_DEVICES := zbtlink,z8102ax-emmc
-            # eMMC specific settings (not NAND/UBI)
-            KERNEL_SIZE := 32768k
-            ROOTFS_SIZE := 7340032k
-            BLOCKSIZE := 64k
-            PAGESIZE := 2048
-            IMAGES := sysupgrade.bin
+            DEVICE_DTS_LOADADDR := 0x43f00000
             IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
             DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware \
-              kmod-usb3 kmod-mmc kmod-mmc-mtk kmod-mt753x swconfig
+              kmod-usb3 kmod-mmc
           endef
           TARGET_DEVICES += zbtlink_z8102ax-emmc
           EOF

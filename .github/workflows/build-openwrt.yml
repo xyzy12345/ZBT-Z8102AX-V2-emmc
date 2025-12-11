@@ -59,8 +59,7 @@ jobs:
             SUPPORTED_DEVICES := zbtlink,z8102ax-emmc
             DEVICE_DTS_LOADADDR := 0x43f00000
             IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-            DEVICE_PACKAGES := kmod-mt7981-firmware mt7981-wo-firmware \
-              kmod-usb3 kmod-mmc
+            DEVICE_PACKAGES := kmod-usb3 kmod-mmc kmod-mt_wifi
           endef
           TARGET_DEVICES += zbtlink_z8102ax-emmc
           EOF

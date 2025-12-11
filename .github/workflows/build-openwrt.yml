@@ -109,10 +109,14 @@ jobs:
           else
             echo "✗ 设备未被选择，配置可能有问题"
             echo "重新配置设备..."
-            echo "CONFIG_TARGET_mediatek=y" > .config
-            echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+            # 保留原配置，只添加/更新设备选择
+            sed -i '/CONFIG_TARGET_mediatek_filogic_DEVICE_/d' .config
+            sed -i '/CONFIG_TARGET_PROFILE=/d' .config
             echo "CONFIG_TARGET_mediatek_filogic_DEVICE_zbtlink_z8102ax-emmc=y" >> .config
+            echo "CONFIG_TARGET_PROFILE=\"DEVICE_zbtlink_z8102ax-emmc\"" >> .config
             make defconfig
+            echo "重新验证设备选择:"
+            grep -E "CONFIG_TARGET.*DEVICE.*z8102ax" .config
           fi
 
       - name: 创建升级脚本
